@@ -16,6 +16,7 @@ class Pengembalian extends Model
         'catatan',
     ];
 
+    
     public function peminjaman()
     {
         return $this->belongsTo(Peminjaman::class);
