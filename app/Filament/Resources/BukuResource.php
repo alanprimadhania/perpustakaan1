@@ -10,6 +10,7 @@ use Filament\Tables\Table;
 
 // ✅ IMPORT FORM
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\FileUpload;
 
@@ -65,7 +66,7 @@ class BukuResource extends Resource
             TextInput::make('lokasi_rak')
                 ->nullable(),
         
-            \Filament\Forms\Components\Textarea::make('deskripsi')
+            Textarea::make('deskripsi')
                 ->rows(3)
                 ->nullable(),
         

@@ -72,6 +72,7 @@ class PeminjamanResource extends Resource
                     'dipinjam' => 'Dipinjam',
                     'menunggu_kembali' => 'Menunggu Pengembalian',
                     'dikembalikan' => 'Dikembalikan',
+                    'terlambat' => 'Terlambat',
                     'ditolak' => 'Ditolak',
                 ])
                 ->default('dipinjam')
@@ -104,10 +105,16 @@ class PeminjamanResource extends Resource
                         'info' => 'menunggu_kembali',
                         'success' => 'dipinjam',
                         'danger' => 'ditolak',
+                        'warning' => 'terlambat',
                         'primary' => 'dikembalikan',
                     ]),
 
                 TextColumn::make('tanggal_pinjam')->date(),
+                // ✅ TAMBAH kolom denda (opsional)
+            TextColumn::make('pengembalian.denda_dibayar')
+                ->label('Denda')
+                ->money('IDR')
+                ->default('-'),
             ])
 
             ->actions([
@@ -163,99 +170,107 @@ class PeminjamanResource extends Resource
                             ->send();
                     }),
 
-                // 🔄 TERIMA PENGEMBALIAN (dari siswa)
-                Action::make('terima_kembali')
-                    ->label('Terima Pengembalian')
-                    ->color('success')
-                    ->visible(fn ($record) => $record->status === 'menunggu_kembali')
-                    ->action(function ($record) {
+                  // 🔄 TERIMA PENGEMBALIAN (dari siswa)
+            Action::make('terima_kembali')
+                ->label('Terima Pengembalian')
+                ->color('success')
+                ->visible(fn ($record) => $record->status === 'menunggu_kembali')
+                ->action(function ($record) {
 
-                        // ✅ CEK DULU (FIX BUG)
-                        if ($record->pengembalian()->exists()) {
-                            Notification::make()
-                                ->title('Sudah diproses!')
-                                ->warning()
-                                ->send();
-                            return;
-                        }
-
-                        $buku = $record->buku;
-
-                        $terlambat = Carbon::parse($record->batas_pengembalian)
-                            ->diffInDays(now(), false);
-
-                        $terlambat = $terlambat > 0 ? $terlambat : 0;
-
-                        $denda = $terlambat * 1000;
-
-                        Pengembalian::create([
-                            'peminjaman_id' => $record->id,
-                            'tanggal_kembali_aktual' => now(),
-                            'keterlambatan' => $terlambat,
-                            'denda_dibayar' => $denda,
-                            'kondisi_buku' => 'baik',
-                        ]);
-
-                        $record->update([
-                            'status' => 'dikembalikan',
-                            'admin_id' => auth()->id(),
-                            'tanggal_kembali' => now(),
-                        ]);
-
-                        $buku->increment('stok');
-
+                    if ($record->pengembalian()->exists()) {
                         Notification::make()
-                            ->title('Pengembalian diterima')
-                            ->success()
+                            ->title('Sudah diproses!')
+                            ->warning()
                             ->send();
-                    }),
+                        return;
+                    }
 
-                // 🔥 KEMBALIKAN LANGSUNG (NEW)
-                Action::make('kembalikan_langsung')
-                    ->label('Kembalikan Langsung')
-                    ->color('primary')
-                    ->visible(fn ($record) => $record->status === 'dipinjam')
-                    ->action(function ($record) {
+                    $buku = $record->buku;
 
-                        // ❗ anti double
-                        if ($record->pengembalian()->exists()) {
-                            Notification::make()
-                                ->title('Sudah dikembalikan!')
-                                ->warning()
-                                ->send();
-                            return;
-                        }
+                    // ✅ Hitung keterlambatan
+                    $batasKembali = Carbon::parse($record->batas_pengembalian);
+                    $terlambat = max(0, $batasKembali->diffInDays(now()));
+                    $denda = $terlambat * 1000;
 
-                        $buku = $record->buku;
+                    // ✅ Tentukan status berdasarkan keterlambatan
+                    $statusBaru = $terlambat > 0 ? 'terlambat' : 'dikembalikan';
 
-                        $terlambat = Carbon::parse($record->batas_pengembalian)
-                            ->diffInDays(now(), false);
+                    Pengembalian::create([
+                        'peminjaman_id' => $record->id,
+                        'tanggal_kembali_aktual' => now(),
+                        'keterlambatan' => $terlambat,
+                        'denda_dibayar' => $denda,
+                        'kondisi_buku' => 'baik',
+                    ]);
 
-                        $terlambat = $terlambat > 0 ? $terlambat : 0;
+                    $record->update([
+                        'status' => $statusBaru, // ✅ UBAH DI SINI
+                        'admin_id' => auth()->id(),
+                        'tanggal_kembali' => now(),
+                    ]);
 
-                        $denda = $terlambat * 1000;
+                    $buku->increment('stok');
 
-                        Pengembalian::create([
-                            'peminjaman_id' => $record->id,
-                            'tanggal_kembali_aktual' => now(),
-                            'keterlambatan' => $terlambat,
-                            'denda_dibayar' => $denda,
-                            'kondisi_buku' => 'baik',
-                        ]);
+                    $message = $terlambat > 0 
+                        ? "Pengembalian diterima (TERLAMBAT {$terlambat} hari). Denda: Rp " . number_format($denda)
+                        : "Pengembalian diterima tepat waktu";
 
-                        $record->update([
-                            'status' => 'dikembalikan',
-                            'tanggal_kembali' => now(),
-                            'admin_id' => auth()->id(),
-                        ]);
+                    Notification::make()
+                        ->title($message)
+                        ->success()
+                        ->send();
+                }),
 
-                        $buku->increment('stok');
+            // 🔥 KEMBALIKAN LANGSUNG
+            Action::make('kembalikan_langsung')
+                ->label('Kembalikan Langsung')
+                ->color('primary')
+                ->visible(fn ($record) => $record->status === 'dipinjam')
+                ->action(function ($record) {
 
+                    if ($record->pengembalian()->exists()) {
                         Notification::make()
-                            ->title('Berhasil dikembalikan')
-                            ->success()
+                            ->title('Sudah dikembalikan!')
+                            ->warning()
                             ->send();
-                    }),
+                        return;
+                    }
+
+                    $buku = $record->buku;
+
+                    // ✅ Hitung keterlambatan
+                    $batasKembali = Carbon::parse($record->batas_pengembalian);
+                    $terlambat = max(0, $batasKembali->diffInDays(now()));
+                    $denda = $terlambat * 1000;
+
+                    // ✅ Tentukan status berdasarkan keterlambatan
+                    $statusBaru = $terlambat > 0 ? 'terlambat' : 'dikembalikan';
+
+                    Pengembalian::create([
+                        'peminjaman_id' => $record->id,
+                        'tanggal_kembali_aktual' => now(),
+                        'keterlambatan' => $terlambat,
+                        'denda_dibayar' => $denda,
+                        'kondisi_buku' => 'baik',
+                    ]);
+
+                    $record->update([
+                        'status' => $statusBaru, // ✅ UBAH DI SINI
+                        'tanggal_kembali' => now(),
+                        'admin_id' => auth()->id(),
+                    ]);
+
+                    $buku->increment('stok');
+
+                    $message = $terlambat > 0 
+                        ? "Dikembalikan dengan keterlambatan {$terlambat} hari. Denda: Rp " . number_format($denda)
+                        : "Berhasil dikembalikan tepat waktu";
+
+                    Notification::make()
+                        ->title($message)
+                        ->success()
+                        ->send();
+                }),
             ])
 
             ->bulkActions([

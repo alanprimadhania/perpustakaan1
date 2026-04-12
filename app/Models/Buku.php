@@ -13,7 +13,11 @@ class Buku extends Model
     'penulis',
     'penerbit',
     'tahun_terbit',
+    'isbn',
+    'jumlah_halaman',
     'stok',
+    'lokasi_rak',
+    'deskripsi',
     'cover_image',
 ];
     // Relasi ke Kategori

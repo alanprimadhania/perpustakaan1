@@ -17,34 +17,17 @@ class PengembalianUserController extends Controller
             return back()->with('error', 'Tidak bisa dikembalikan');
         }
 
-        // ❌ jangan dobel
-        if (Pengembalian::where('peminjaman_id', $id)->exists()) {
+        // ❌ cegah dobel request
+        if ($peminjaman->status === 'menunggu_kembali') {
             return back()->with('error', 'Sudah diajukan');
         }
 
-         // 🔥 HANYA UBAH STATUS
-    $peminjaman->update([
-        'status' => 'menunggu_kembali'
-    ]);
-
-        // 🔥 HITUNG TELAT
+        // 🔥 HITUNG TELAT (untuk preview saja)
         $batas = Carbon::parse($peminjaman->batas_pengembalian);
-        $sekarang = Carbon::now();
-
-        $telat = $batas->diffInDays($sekarang, false);
+        $telat = $batas->diffInDays(now(), false);
         $keterlambatan = $telat > 0 ? $telat : 0;
 
-        // ✅ SIMPAN KE DATABASE (INI YANG KAMU BELUM ADA)
-        Pengembalian::create([
-            'peminjaman_id' => $peminjaman->id,
-            'admin_id' => null, // sementara (WAJIB ADA)
-            'tanggal_kembali_aktual' => now(),
-            'keterlambatan' => $keterlambatan,
-            'denda_dibayar' => $keterlambatan * 1000,
-            'kondisi_buku' => 'baik',
-        ]);
-    
-        // ✅ update status peminjaman
+        // ❗ HANYA UPDATE STATUS (INI YANG BENAR)
         $peminjaman->update([
             'status' => 'menunggu_kembali'
         ]);
