@@ -13,7 +13,18 @@ class ListBukus extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->label('Tambah Buku'),
         ];
+    }
+
+    protected function getEmptyStateHeading(): ?string
+    {
+        return 'Belum ada buku';
+    }
+
+    protected function getEmptyStateDescription(): ?string
+    {
+        return 'Klik tombol "Tambah Buku" untuk menambahkan data.';
     }
 }

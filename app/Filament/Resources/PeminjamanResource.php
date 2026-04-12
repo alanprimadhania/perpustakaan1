@@ -5,10 +5,13 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\PeminjamanResource\Pages;
 use App\Models\Peminjaman;
 use App\Models\Buku;
+use App\Models\Pengembalian;
 
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
+
+use Carbon\Carbon;
 
 // FORM
 use Filament\Forms\Components\TextInput;
@@ -32,8 +35,6 @@ class PeminjamanResource extends Resource
     protected static ?string $model = Peminjaman::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-inbox-arrow-down';
-    protected static ?string $navigationLabel = 'Peminjaman';
-    protected static ?string $pluralModelLabel = 'Peminjaman';
 
     public static function form(Form $form): Form
     {
@@ -45,8 +46,13 @@ class PeminjamanResource extends Resource
 
             Select::make('siswa_id')
                 ->relationship('siswa', 'nis')
+                ->getOptionLabelFromRecordUsing(fn ($record) => 
+                    $record->nis . ' - ' . ($record->user->name ?? '-')
+                )
                 ->searchable()
-                ->required(),
+                ->preload()
+                ->required()
+                ->label('Siswa'),
 
             Select::make('buku_id')
                 ->relationship('buku', 'judul')
@@ -54,11 +60,11 @@ class PeminjamanResource extends Resource
                 ->preload()
                 ->required(),
 
-            DatePicker::make('tanggal_pinjam')
-                ->required(),
+            DatePicker::make('tanggal_pinjam')->required(),
+            DatePicker::make('batas_pengembalian')->required(),
 
-            DatePicker::make('batas_pengembalian')
-                ->required(),
+            DatePicker::make('tanggal_kembali')
+                ->maxDate(now()),
 
             Select::make('status')
                 ->options([
@@ -68,7 +74,7 @@ class PeminjamanResource extends Resource
                     'dikembalikan' => 'Dikembalikan',
                     'ditolak' => 'Ditolak',
                 ])
-                ->default('menunggu')
+                ->default('dipinjam')
                 ->disabled(),
         ]);
     }
@@ -79,7 +85,11 @@ class PeminjamanResource extends Resource
             ->columns([
                 TextColumn::make('kode_peminjaman')->searchable(),
 
-                TextColumn::make('siswa.nis')->label('NIS'),
+                TextColumn::make('siswa.nis')
+                    ->label('NIS')
+                    ->formatStateUsing(fn ($state, $record) => 
+                        $state . ' - ' . ($record->siswa->user->name ?? '-') 
+                    ),
 
                 TextColumn::make('buku.judul')->label('Buku'),
 
@@ -87,7 +97,6 @@ class PeminjamanResource extends Resource
                     ->label('Petugas')
                     ->default('-'),
 
-                // 🔥 STATUS BADGE
                 TextColumn::make('status')
                     ->badge()
                     ->colors([
@@ -125,7 +134,7 @@ class PeminjamanResource extends Resource
 
                         $record->update([
                             'status' => 'dipinjam',
-                            'admin_id' => auth()->id(), // 🔥 admin pemberi
+                            'admin_id' => auth()->id(),
                         ]);
 
                         $buku->decrement('stok');
@@ -136,7 +145,7 @@ class PeminjamanResource extends Resource
                             ->send();
                     }),
 
-                // ❌ TOLAK PINJAM
+                // ❌ TOLAK
                 Action::make('tolak')
                     ->label('Tolak')
                     ->color('danger')
@@ -144,7 +153,8 @@ class PeminjamanResource extends Resource
                     ->action(function ($record) {
 
                         $record->update([
-                            'status' => 'ditolak'
+                            'status' => 'ditolak',
+                            'admin_id' => auth()->id(),
                         ]);
 
                         Notification::make()
@@ -153,24 +163,96 @@ class PeminjamanResource extends Resource
                             ->send();
                     }),
 
-                // 🔄 TERIMA PENGEMBALIAN
+                // 🔄 TERIMA PENGEMBALIAN (dari siswa)
                 Action::make('terima_kembali')
                     ->label('Terima Pengembalian')
                     ->color('success')
                     ->visible(fn ($record) => $record->status === 'menunggu_kembali')
                     ->action(function ($record) {
 
+                        // ✅ CEK DULU (FIX BUG)
+                        if ($record->pengembalian()->exists()) {
+                            Notification::make()
+                                ->title('Sudah diproses!')
+                                ->warning()
+                                ->send();
+                            return;
+                        }
+
                         $buku = $record->buku;
+
+                        $terlambat = Carbon::parse($record->batas_pengembalian)
+                            ->diffInDays(now(), false);
+
+                        $terlambat = $terlambat > 0 ? $terlambat : 0;
+
+                        $denda = $terlambat * 1000;
+
+                        Pengembalian::create([
+                            'peminjaman_id' => $record->id,
+                            'tanggal_kembali_aktual' => now(),
+                            'keterlambatan' => $terlambat,
+                            'denda_dibayar' => $denda,
+                            'kondisi_buku' => 'baik',
+                        ]);
 
                         $record->update([
                             'status' => 'dikembalikan',
-                            'admin_id' => auth()->id(), // 🔥 admin penerima
+                            'admin_id' => auth()->id(),
+                            'tanggal_kembali' => now(),
                         ]);
 
                         $buku->increment('stok');
 
                         Notification::make()
-                            ->title('Buku berhasil dikembalikan')
+                            ->title('Pengembalian diterima')
+                            ->success()
+                            ->send();
+                    }),
+
+                // 🔥 KEMBALIKAN LANGSUNG (NEW)
+                Action::make('kembalikan_langsung')
+                    ->label('Kembalikan Langsung')
+                    ->color('primary')
+                    ->visible(fn ($record) => $record->status === 'dipinjam')
+                    ->action(function ($record) {
+
+                        // ❗ anti double
+                        if ($record->pengembalian()->exists()) {
+                            Notification::make()
+                                ->title('Sudah dikembalikan!')
+                                ->warning()
+                                ->send();
+                            return;
+                        }
+
+                        $buku = $record->buku;
+
+                        $terlambat = Carbon::parse($record->batas_pengembalian)
+                            ->diffInDays(now(), false);
+
+                        $terlambat = $terlambat > 0 ? $terlambat : 0;
+
+                        $denda = $terlambat * 1000;
+
+                        Pengembalian::create([
+                            'peminjaman_id' => $record->id,
+                            'tanggal_kembali_aktual' => now(),
+                            'keterlambatan' => $terlambat,
+                            'denda_dibayar' => $denda,
+                            'kondisi_buku' => 'baik',
+                        ]);
+
+                        $record->update([
+                            'status' => 'dikembalikan',
+                            'tanggal_kembali' => now(),
+                            'admin_id' => auth()->id(),
+                        ]);
+
+                        $buku->increment('stok');
+
+                        Notification::make()
+                            ->title('Berhasil dikembalikan')
                             ->success()
                             ->send();
                     }),

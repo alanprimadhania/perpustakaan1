@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('pengembalians', function (Blueprint $table) {
             $table->id();
             $table->foreignId('peminjaman_id')->constrained()->unique();
-            $table->foreignId('admin_id')->constrained('users');
+            $table->foreignId('admin_id')->constrained('users')->nullable();
             $table->date('tanggal_kembali_aktual');
             $table->integer('keterlambatan')->default(0);
             $table->decimal('denda_dibayar',10,2)->nullable();

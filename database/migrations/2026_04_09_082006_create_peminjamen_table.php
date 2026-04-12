@@ -16,11 +16,11 @@ return new class extends Migration
             $table->string('kode_peminjaman')->unique();
             $table->foreignId('siswa_id')->constrained();
             $table->foreignId('buku_id')->constrained();
-            $table->foreignId('admin_id')->constrained('users');
+            $table->foreignId('admin_id')->constrained('users')->nullable();
             $table->date('tanggal_pinjam');
             $table->date('batas_pengembalian');
             $table->date('tanggal_kembali')->nullable();
-            $table->enum('status',['menunggu','menunggu_kembali','dipinjam','dikembalikan','terlambat','hilang']);
+            $table->enum('status',['menunggu','menunggu_kembali','dipinjam','dikembalikan','terlambat','hilang','ditolak']);
             $table->timestamps();
         });
     }

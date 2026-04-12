@@ -33,26 +33,31 @@
 
                             <td class="px-4 py-2">
 
-                               @if ($item->status == 'menunggu')
-                                   <span class="bg-gray-500 text-white px-2 py-1 rounded text-xs">
-                                       Menunggu
-                                   </span>
-                               
-                               @elseif ($item->status == 'dipinjam')
-                                   <span class="bg-blue-500 text-white px-2 py-1 rounded text-xs">
-                                       Dipinjam
-                                   </span>
-                               
-                               @elseif ($item->status == 'ditolak')
-                                   <span class="bg-red-500 text-white px-2 py-1 rounded text-xs">
-                                       Ditolak
-                                   </span>
-                               
-                               @elseif ($item->status == 'dikembalikan')
-                                   <span class="bg-green-500 text-white px-2 py-1 rounded text-xs">
-                                       Dikembalikan
-                                   </span>
-                               @endif
+                              @if ($item->status == 'menunggu')
+                                <span class="bg-gray-500 text-white px-2 py-1 rounded text-xs">
+                                    Menunggu
+                                </span>
+                            
+                            @elseif ($item->status == 'dipinjam')
+                                <span class="bg-blue-500 text-white px-2 py-1 rounded text-xs">
+                                    Dipinjam
+                                </span>
+                            
+                            @elseif ($item->status == 'menunggu_kembali') {{-- ✅ TAMBAHKAN INI --}}
+                                <span class="bg-gray-500 text-white px-2 py-1 rounded text-xs">
+                                    Menunggu Pengembalian
+                                </span>
+                            
+                            @elseif ($item->status == 'ditolak')
+                                <span class="bg-red-500 text-white px-2 py-1 rounded text-xs">
+                                    Ditolak
+                                </span>
+                            
+                            @elseif ($item->status == 'dikembalikan')
+                                <span class="bg-green-500 text-white px-2 py-1 rounded text-xs">
+                                    Dikembalikan
+                                </span>
+                            @endif
 
                             </td>
 

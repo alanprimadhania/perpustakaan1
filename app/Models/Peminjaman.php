@@ -12,6 +12,7 @@ protected $fillable = [
     'buku_id',
     'tanggal_pinjam',
     'batas_pengembalian',
+    'tanggal_kembali',
     'status',
     'admin_id',
 ];
@@ -20,6 +21,13 @@ protected $fillable = [
     {
         return $this->belongsTo(User::class, 'admin_id');
     }
+
+    // Relasi ke User
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
     // Relasi ke Siswa
     public function siswa()
     {

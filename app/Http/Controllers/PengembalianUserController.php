@@ -22,6 +22,11 @@ class PengembalianUserController extends Controller
             return back()->with('error', 'Sudah diajukan');
         }
 
+         // 🔥 HANYA UBAH STATUS
+    $peminjaman->update([
+        'status' => 'menunggu_kembali'
+    ]);
+
         // 🔥 HITUNG TELAT
         $batas = Carbon::parse($peminjaman->batas_pengembalian);
         $sekarang = Carbon::now();
@@ -32,13 +37,13 @@ class PengembalianUserController extends Controller
         // ✅ SIMPAN KE DATABASE (INI YANG KAMU BELUM ADA)
         Pengembalian::create([
             'peminjaman_id' => $peminjaman->id,
-            'admin_id' => 1, // sementara (WAJIB ADA)
+            'admin_id' => null, // sementara (WAJIB ADA)
             'tanggal_kembali_aktual' => now(),
             'keterlambatan' => $keterlambatan,
             'denda_dibayar' => $keterlambatan * 1000,
             'kondisi_buku' => 'baik',
         ]);
-
+    
         // ✅ update status peminjaman
         $peminjaman->update([
             'status' => 'menunggu_kembali'
